@@ -107,7 +107,8 @@ class CircleCIJob:
                 "restore_cache": {
                     "keys": [
                         # check the fully-matched cache first
-                        f"v{self.cache_version}-{self.cache_name}-{cache_branch_prefix}-pip-" + '{{ checksum "setup.py" }}',
+                        f"v{self.cache_version}-{self.cache_name}-{cache_branch_prefix}-pip-"
+                        + '{{ checksum "setup.py" }}',
                         # try the partially-matched cache from `main`
                         f"v{self.cache_version}-{self.cache_name}-main-pip-",
                         # try the general partially-matched cache
@@ -118,35 +119,38 @@ class CircleCIJob:
             {
                 "restore_cache": {
                     "keys": [
-                        f"v{self.cache_version}-{self.cache_name}-{cache_branch_prefix}-site-packages-" + '{{ checksum "setup.py" }}',
+                        f"v{self.cache_version}-{self.cache_name}-{cache_branch_prefix}-site-packages-"
+                        + '{{ checksum "setup.py" }}',
                         f"v{self.cache_version}-{self.cache_name}-main-site-packages-",
                         f"v{self.cache_version}-{self.cache_name}-{cache_branch_prefix}-site-packages-",
                     ]
                 }
             },
-        ]
-        steps.extend([{"run": l} for l in self.install_steps])
-        steps.extend([{"run": 'pip install "fsspec>=2023.5.0,<2023.10.0"'}])
-        steps.extend([{"run": "pip install pytest-subtests"}])
-        steps.append(
+            *[{"run": l} for l in self.install_steps],
+            *[{"run": 'pip install "fsspec>=2023.5.0,<2023.10.0"'}],
+            *[{"run": "pip install pytest-subtests"}],
             {
                 "save_cache": {
-                    "key": f"v{self.cache_version}-{self.cache_name}-{cache_branch_prefix}-pip-" + '{{ checksum "setup.py" }}',
+                    "key": f"v{self.cache_version}-{self.cache_name}-{cache_branch_prefix}-pip-"
+                    + '{{ checksum "setup.py" }}',
                     "paths": ["~/.cache/pip"],
                 }
-            }
-        )
-        steps.append(
+            },
             {
                 "save_cache": {
-                    "key": f"v{self.cache_version}-{self.cache_name}-{cache_branch_prefix}-site-packages-" + '{{ checksum "setup.py" }}',
+                    "key": f"v{self.cache_version}-{self.cache_name}-{cache_branch_prefix}-site-packages-"
+                    + '{{ checksum "setup.py" }}',
                     "paths": ["~/.pyenv/versions/"],
                 }
-            }
-        )
-        steps.append({"run": {"name": "Show installed libraries and their versions", "command": "pip freeze | tee installed.txt"}})
-        steps.append({"store_artifacts": {"path": "~/transformers/installed.txt"}})
-
+            },
+            {
+                "run": {
+                    "name": "Show installed libraries and their versions",
+                    "command": "pip freeze | tee installed.txt",
+                }
+            },
+            {"store_artifacts": {"path": "~/transformers/installed.txt"}},
+        ]
         all_options = {**COMMON_PYTEST_OPTIONS, **self.pytest_options}
         pytest_flags = [f"--{key}={value}" if (value is not None or key in ["doctest-modules"]) else f"-{key}" for key, value in all_options.items()]
         pytest_flags.append(
@@ -195,8 +199,7 @@ class CircleCIJob:
             # Each executor to run ~10 tests
             n_executors = max(len(tests) // 10, 1)
             # Avoid empty test list on some executor(s) or launching too many executors
-            if n_executors > self.parallelism:
-                n_executors = self.parallelism
+            n_executors = min(n_executors, self.parallelism)
             job["parallelism"] = n_executors
 
             # Need to be newline separated for the command `circleci tests split` below
@@ -204,11 +207,17 @@ class CircleCIJob:
             steps.append({"run": {"name": "Get tests", "command": command}})
 
             command = 'TESTS=$(circleci tests split tests.txt) && echo $TESTS > splitted_tests.txt'
-            steps.append({"run": {"name": "Split tests", "command": command}})
-
-            steps.append({"store_artifacts": {"path": "~/transformers/tests.txt"}})
-            steps.append({"store_artifacts": {"path": "~/transformers/splitted_tests.txt"}})
-
+            steps.extend(
+                (
+                    {"run": {"name": "Split tests", "command": command}},
+                    {"store_artifacts": {"path": "~/transformers/tests.txt"}},
+                    {
+                        "store_artifacts": {
+                            "path": "~/transformers/splitted_tests.txt"
+                        }
+                    },
+                )
+            )
             test_command = ""
             if self.timeout:
                 test_command = f"timeout {self.timeout} "
@@ -258,12 +267,19 @@ class CircleCIJob:
 
         check_test_command += 'else echo "other fatal error"; echo ""; exit -1; fi;'
 
-        steps.append({"run": {"name": "Check test results", "command": check_test_command}})
-
-        steps.append({"store_test_results": {"path": "test-results"}})
-
-        steps.append({"store_artifacts": {"path": "~/transformers/tests_output.txt"}})
-        steps.append({"store_artifacts": {"path": "~/transformers/reports"}})
+        steps.extend(
+            (
+                {
+                    "run": {
+                        "name": "Check test results",
+                        "command": check_test_command,
+                    }
+                },
+                {"store_test_results": {"path": "test-results"}},
+                {"store_artifacts": {"path": "~/transformers/tests_output.txt"}},
+                {"store_artifacts": {"path": "~/transformers/reports"}},
+            )
+        )
         job["steps"] = steps
         return job
 
@@ -598,11 +614,10 @@ def create_circleci_config(folder=None):
                         fn = fn.replace("test_modeling_tf_", "test_modeling_")
                     elif fn.startswith("test_modeling_flax_"):
                         fn = fn.replace("test_modeling_flax_", "test_modeling_")
-                    else:
-                        if job.job_name == "test_torch_and_tf":
-                            fn = fn.replace("test_modeling_", "test_modeling_tf_")
-                        elif job.job_name == "test_torch_and_flax":
-                            fn = fn.replace("test_modeling_", "test_modeling_flax_")
+                    elif job.job_name == "test_torch_and_flax":
+                        fn = fn.replace("test_modeling_", "test_modeling_flax_")
+                    elif job.job_name == "test_torch_and_tf":
+                        fn = fn.replace("test_modeling_", "test_modeling_tf_")
                     new_test_file = str(os.path.join(dir_path, fn))
                     if os.path.isfile(new_test_file):
                         if new_test_file not in extended_tests_to_run:
@@ -627,7 +642,7 @@ def create_circleci_config(folder=None):
             else:
                 job.tests_to_run = [f for f in example_tests.split(" ") if f.startswith(f"examples/{framework}")]
 
-            if len(job.tests_to_run) > 0:
+            if job.tests_to_run:
                 jobs.append(job)
 
     doctest_file = os.path.join(folder, "doctest_list.txt")
@@ -643,15 +658,16 @@ def create_circleci_config(folder=None):
     if os.path.exists(repo_util_file) and os.path.getsize(repo_util_file) > 0:
         jobs.extend(REPO_UTIL_TESTS)
 
-    if len(jobs) == 0:
+    if not jobs:
         jobs = [EmptyJob()]
-    config = {"version": "2.1"}
-    config["parameters"] = {
-        # Only used to accept the parameters from the trigger
-        "nightly": {"type": "boolean", "default": False},
-        "tests_to_run": {"type": "string", "default": test_list},
+    config = {
+        "version": "2.1",
+        "parameters": {
+            "nightly": {"type": "boolean", "default": False},
+            "tests_to_run": {"type": "string", "default": test_list},
+        },
+        "jobs": {j.job_name: j.to_dict() for j in jobs},
     }
-    config["jobs"] = {j.job_name: j.to_dict() for j in jobs}
     config["workflows"] = {"version": 2, "run_tests": {"jobs": [j.job_name for j in jobs]}}
     with open(os.path.join(folder, "generated_config.yml"), "w") as f:
         f.write(yaml.dump(config, indent=2, width=1000000, sort_keys=False))

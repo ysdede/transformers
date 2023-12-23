@@ -292,7 +292,7 @@ def main():
     if model_args.model_name_or_path:
         model = ViTMAEForPreTraining.from_pretrained(
             model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            from_tf=".ckpt" in model_args.model_name_or_path,
             config=config,
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
