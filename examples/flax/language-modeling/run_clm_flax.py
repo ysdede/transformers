@@ -265,15 +265,14 @@ class DataTrainingArguments:
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
             raise ValueError("Need either a dataset name or a training/validation file.")
-        else:
-            if self.train_file is not None:
-                extension = self.train_file.split(".")[-1]
-                if extension not in ["csv", "json", "txt"]:
-                    raise ValueError("train_file` should be a csv, json or text file.")
-            if self.validation_file is not None:
-                extension = self.validation_file.split(".")[-1]
-                if extension not in ["csv", "json", "txt"]:
-                    raise ValueError("`validation_file` should be a csv, json or text file.")
+        if self.train_file is not None:
+            extension = self.train_file.split(".")[-1]
+            if extension not in ["csv", "json", "txt"]:
+                raise ValueError("train_file` should be a csv, json or text file.")
+        if self.validation_file is not None:
+            extension = self.validation_file.split(".")[-1]
+            if extension not in ["csv", "json", "txt"]:
+                raise ValueError("`validation_file` should be a csv, json or text file.")
 
 
 class TrainState(train_state.TrainState):
@@ -304,9 +303,7 @@ def data_loader(rng: jax.random.PRNGKey, dataset: Dataset, batch_size: int, shuf
 
     for idx in batch_idx:
         batch = dataset[idx]
-        batch = {k: np.array(v) for k, v in batch.items()}
-
-        yield batch
+        yield {k: np.array(v) for k, v in batch.items()}
 
 
 def write_train_metric(summary_writer, train_metrics, train_time, step):
@@ -334,8 +331,9 @@ def create_learning_rate_fn(
     decay_fn = optax.linear_schedule(
         init_value=learning_rate, end_value=0, transition_steps=num_train_steps - num_warmup_steps
     )
-    schedule_fn = optax.join_schedules(schedules=[warmup_fn, decay_fn], boundaries=[num_warmup_steps])
-    return schedule_fn
+    return optax.join_schedules(
+        schedules=[warmup_fn, decay_fn], boundaries=[num_warmup_steps]
+    )
 
 
 def main():
