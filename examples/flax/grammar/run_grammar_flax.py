@@ -711,14 +711,12 @@ def main():
     metric = evaluate.load("rouge")
 
     def postprocess_text(preds, labels):
+        # For GEC, you might not need to split into sentences at all.
+        # Simply stripping leading/trailing whitespace could be sufficient.
         preds = [pred.strip() for pred in preds]
         labels = [label.strip() for label in labels]
-
-        # rougeLSum expects newline after each sentence
-        preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
-        labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
-
         return preds, labels
+
 
     def compute_metrics(preds, labels):
         decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
@@ -906,7 +904,7 @@ def main():
         train_metrics = []
 
         # Generate an epoch by shuffling sampling indices from the train dataset
-        train_loader = data_loader(input_rng, train_dataset, train_batch_size, shuffle=True)
+        train_loader = data_loader(input_rng, train_dataset, train_batch_size, shuffle=True, drop_last=False)
         steps_per_epoch = len(train_dataset) // train_batch_size
         # train
         for _ in tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False):
