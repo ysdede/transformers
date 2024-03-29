@@ -54,7 +54,7 @@ When you load a model explicitly, you can inspect the generation configuration t
 ```python
 >>> from transformers import AutoModelForCausalLM
 
->>> model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+>>> model = AutoModelForCausalLM.from_pretrained("distilbert/distilgpt2")
 >>> model.generation_config
 GenerationConfig {
     "bos_token_id": 50256,
@@ -87,7 +87,7 @@ to stop generation whenever the full generation exceeds some amount of time. To 
 - `num_beams`: by specifying a number of beams higher than 1, you are effectively switching from greedy search to
 beam search. This strategy evaluates several hypotheses at each time step and eventually chooses the hypothesis that
 has the overall highest probability for the entire sequence. This has the advantage of identifying high-probability
-sequences that start with a lower probability initial tokens and would've been ignored by the greedy search.
+sequences that start with a lower probability initial tokens and would've been ignored by the greedy search. Visualize how it works [here](https://huggingface.co/spaces/m-ric/beam_search_visualizer).
 - `do_sample`: if set to `True`, this parameter enables decoding strategies such as multinomial sampling, beam-search
 multinomial sampling, Top-K sampling and Top-p sampling. All these strategies select the next token from the probability
 distribution over the entire vocabulary with various strategy-specific adjustments.
@@ -121,8 +121,8 @@ one for summarization with beam search). You must have the right Hub permissions
 ```python
 >>> from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, GenerationConfig
 
->>> tokenizer = AutoTokenizer.from_pretrained("t5-small")
->>> model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
+>>> tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
+>>> model = AutoModelForSeq2SeqLM.from_pretrained("google-t5/t5-small")
 
 >>> translation_generation_config = GenerationConfig(
 ...     num_beams=4,
@@ -162,8 +162,8 @@ your screen, one word at a time:
 ```python
 >>> from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
 
->>> tok = AutoTokenizer.from_pretrained("gpt2")
->>> model = AutoModelForCausalLM.from_pretrained("gpt2")
+>>> tok = AutoTokenizer.from_pretrained("openai-community/gpt2")
+>>> model = AutoModelForCausalLM.from_pretrained("openai-community/gpt2")
 >>> inputs = tok(["An increasing sequence: one,"], return_tensors="pt")
 >>> streamer = TextStreamer(tok)
 
@@ -187,7 +187,7 @@ Here, we'll show some of the parameters that control the decoding strategies and
 >>> from transformers import AutoModelForCausalLM, AutoTokenizer
 
 >>> prompt = "I look forward to"
->>> checkpoint = "distilgpt2"
+>>> checkpoint = "distilbert/distilgpt2"
 
 >>> tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 >>> inputs = tokenizer(prompt, return_tensors="pt")
@@ -208,7 +208,7 @@ The two main parameters that enable and control the behavior of contrastive sear
 ```python
 >>> from transformers import AutoTokenizer, AutoModelForCausalLM
 
->>> checkpoint = "gpt2-large"
+>>> checkpoint = "openai-community/gpt2-large"
 >>> tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 >>> model = AutoModelForCausalLM.from_pretrained(checkpoint)
 
@@ -235,7 +235,7 @@ To enable multinomial sampling set `do_sample=True` and `num_beams=1`.
 >>> from transformers import AutoTokenizer, AutoModelForCausalLM, set_seed
 >>> set_seed(0)  # For reproducibility
 
->>> checkpoint = "gpt2-large"
+>>> checkpoint = "openai-community/gpt2-large"
 >>> tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 >>> model = AutoModelForCausalLM.from_pretrained(checkpoint)
 
@@ -254,13 +254,19 @@ Unlike greedy search, beam-search decoding keeps several hypotheses at each time
 the hypothesis that has the overall highest probability for the entire sequence. This has the advantage of identifying high-probability
 sequences that start with lower probability initial tokens and would've been ignored by the greedy search.
 
+<a href="https://huggingface.co/spaces/m-ric/beam_search_visualizer" class="flex flex-col justify-center">
+    <img style="max-width: 90%; margin: auto;" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/beam_search.png"/>
+</a>
+
+You can visualize how beam-search decoding works in [this interactive demo](https://huggingface.co/spaces/m-ric/beam_search_visualizer): type your input sentence, and play with the parameters to see how the decoding beams change.
+
 To enable this decoding strategy, specify the `num_beams` (aka number of hypotheses to keep track of) that is greater than 1.
 
 ```python
 >>> from transformers import AutoModelForCausalLM, AutoTokenizer
 
 >>> prompt = "It is astonishing how one can"
->>> checkpoint = "gpt2-medium"
+>>> checkpoint = "openai-community/gpt2-medium"
 
 >>> tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 >>> inputs = tokenizer(prompt, return_tensors="pt")
@@ -283,7 +289,7 @@ the `num_beams` greater than 1, and set `do_sample=True` to use this decoding st
 >>> set_seed(0)  # For reproducibility
 
 >>> prompt = "translate English to German: The house is wonderful."
->>> checkpoint = "t5-small"
+>>> checkpoint = "google-t5/t5-small"
 
 >>> tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 >>> inputs = tokenizer(prompt, return_tensors="pt")
@@ -389,3 +395,6 @@ just like in multinomial sampling. However, in assisted decoding, reducing the t
 >>> tokenizer.batch_decode(outputs, skip_special_tokens=True)
 ['Alice and Bob are going to the same party. It is a small party, in a small']
 ```
+
+Alternativelly, you can also set the `prompt_lookup_num_tokens` to trigger n-gram based assisted decoding, as opposed
+to model based assisted decoding. You can read more about it [here](https://twitter.com/joao_gante/status/1747322413006643259).

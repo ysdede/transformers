@@ -22,9 +22,11 @@ import pytest
 
 from transformers import MixtralConfig, is_torch_available
 from transformers.testing_utils import (
+    is_flaky,
     require_flash_attn,
     require_torch,
     require_torch_gpu,
+    require_torch_sdpa,
     slow,
     torch_device,
 )
@@ -42,7 +44,6 @@ if is_torch_available():
 
 
 class MixtralModelTester:
-    # Copied from tests.models.mistral.test_modeling_mistral.MistralModelTester.__init__
     def __init__(
         self,
         parent,
@@ -69,6 +70,7 @@ class MixtralModelTester:
         num_choices=4,
         pad_token_id=0,
         scope=None,
+        router_jitter_noise=0.1,
     ):
         self.parent = parent
         self.batch_size = batch_size
@@ -94,6 +96,7 @@ class MixtralModelTester:
         self.num_choices = num_choices
         self.pad_token_id = pad_token_id
         self.scope = scope
+        self.router_jitter_noise = router_jitter_noise
 
     # Copied from tests.models.mistral.test_modeling_mistral.MistralModelTester.prepare_config_and_inputs
     def prepare_config_and_inputs(self):
@@ -137,6 +140,7 @@ class MixtralModelTester:
             pad_token_id=self.pad_token_id,
             num_experts_per_tok=2,
             num_local_experts=2,
+            router_jitter_noise=self.router_jitter_noise,
         )
 
     # Copied from tests.models.llama.test_modeling_llama.LlamaModelTester.create_and_check_model with Llama->Mixtral
@@ -305,6 +309,13 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMi
     ):
         return True
 
+    # TODO: @Fxmarty
+    @is_flaky(max_attempts=3, description="flaky on some models.")
+    @require_torch_sdpa
+    @slow
+    def test_eager_matches_sdpa_generate(self):
+        super().test_eager_matches_sdpa_generate()
+
     def setUp(self):
         self.model_tester = MixtralModelTester(self)
         self.config_tester = ConfigTester(self, config_class=MixtralConfig, hidden_size=37)
@@ -462,7 +473,6 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMi
         r"""
         Let's make sure we can actually compute the loss and do a backward on it.
         """
-
         config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
         config.num_labels = 3
         config.num_local_experts = 8
@@ -474,7 +484,25 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMi
         model.eval()
         result = model(input_ids, attention_mask=attention_mask)
         self.assertEqual(result.router_logits[0].shape, (91, config.num_local_experts))
-        torch.testing.assert_close(result.aux_loss.cpu(), torch.tensor(8, dtype=torch.float32))
+        torch.testing.assert_close(result.aux_loss.cpu(), torch.tensor(2, dtype=torch.float32), rtol=1e-2, atol=1e-2)
+
+        # First, we make sure that adding padding tokens doesn't change the loss
+        # loss(input_ids, attention_mask=None) == loss(input_ids + padding, attention_mask=attention_mask_with_padding)
+        pad_length = 1000
+        # Add padding tokens (assume that pad_token_id=1) to input_ids
+        padding_block = torch.ones(input_ids.shape[0], pad_length, dtype=torch.int32).to(torch_device)
+        padded_input_ids = torch.cat((padding_block, input_ids), dim=1)  # this is to simulate padding to the left
+        padded_attention_mask = padded_input_ids.ne(1).to(torch_device)
+
+        padded_result = model(padded_input_ids, attention_mask=padded_attention_mask)
+        torch.testing.assert_close(result.aux_loss.cpu(), padded_result.aux_loss.cpu(), rtol=1e-4, atol=1e-4)
+
+        # We make sure that the loss of includding padding tokens != the loss without padding tokens
+        # if attention_mask=None --> we don't exclude padding tokens
+        include_padding_result = model(padded_input_ids, attention_mask=None)
+
+        # This is to mimic torch.testing.assert_not_close
+        self.assertNotAlmostEqual(include_padding_result.aux_loss.item(), result.aux_loss.item())
 
 
 @require_torch
